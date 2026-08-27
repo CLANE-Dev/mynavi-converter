@@ -4,15 +4,14 @@
 テンプレートのセルには最初から「住所：」等のラベルが入っているため、
 値で上書きせずラベルの後ろへ追記する（excel_editor._write 参照）。
 """
+import json
 import os
 
-# ---- 自社情報 ---------------------------------------------------------
 INFO = {
-    "zip": os.environ.get("COMPANY_ZIP", "102-0081"),
+    "zip": os.environ.get("COMPANY_ZIP", "〒102-0081"),
     "addr": os.environ.get(
         "COMPANY_ADDR", "東京都千代田区四番町2番地1-1 クレール東郷坂 1F"
     ),
-    # 2026年7月送信分は携帯番号で提出済み。代表電話に揃える場合は env で上書き。
     "tel": os.environ.get("COMPANY_TEL", "08033861900"),
     "reg": os.environ.get("COMPANY_REG", "T4012301011308"),
     "bank": os.environ.get("BANK_NAME", "三井住友銀行"),
@@ -22,11 +21,8 @@ INFO = {
     "note": os.environ.get("INVOICE_NOTE", ""),
 }
 
-# ---- シート ----------------------------------------------------------
-# 実テンプレートの並びは 注意書き / 表紙 / 明細。先頭が表紙ではないので名前で指定。
 TARGET_SHEET = "表紙"
 
-# ---- 記入セル --------------------------------------------------------
 COMMON_CELLS = {
     "F13": INFO["zip"],
     "E14": INFO["addr"],
@@ -42,14 +38,13 @@ INVOICE_CELLS = {
     "B45": INFO["note"],
 }
 
-# ---- テンプレート変更検知 --------------------------------------------
-# 各セルに存在するはずのラベル。1つでも欠けたら変換を止めて通知する。
-EXPECTED_LABELS = {
-    "F13": ("〒", "郵便", "住所"),
+# F13 は元から空欄の入力枠なのでガードしない。
+# 環境変数 GUARD_LABELS_JSON / GUARD_LABELS_INVOICE_JSON で上書きできる。
+_DEFAULT_LABELS = {
     "E14": ("住所",),
     "E20": ("TEL", "ＴＥＬ", "電話"),
 }
-EXPECTED_LABELS_INVOICE = {
+_DEFAULT_LABELS_INVOICE = {
     "E22": ("登録", "番号"),
     "B36": ("銀行",),
     "B37": ("支店",),
@@ -57,13 +52,28 @@ EXPECTED_LABELS_INVOICE = {
     "B41": ("名義",),
 }
 
-# ---- 角印 ------------------------------------------------------------
+
+def _labels_from_env(var, fallback):
+    raw = os.environ.get(var, "").strip()
+    if not raw:
+        return fallback
+    try:
+        parsed = json.loads(raw)
+        return {k: tuple(v) for k, v in parsed.items()}
+    except Exception:
+        return fallback
+
+
+EXPECTED_LABELS = _labels_from_env("GUARD_LABELS_JSON", _DEFAULT_LABELS)
+EXPECTED_LABELS_INVOICE = _labels_from_env(
+    "GUARD_LABELS_INVOICE_JSON", _DEFAULT_LABELS_INVOICE
+)
+
 STAMP_ANCHOR = os.environ.get("STAMP_ANCHOR", "H18")
 STAMP_WIDTH_PX = int(os.environ.get("STAMP_WIDTH_PX", "105"))
 STAMP_OFFSET_X_PX = int(os.environ.get("STAMP_OFFSET_X_PX", "0"))
 STAMP_OFFSET_Y_PX = int(os.environ.get("STAMP_OFFSET_Y_PX", "0"))
 
-# ---- 動作設定 --------------------------------------------------------
 EXCEL_PASSWORD = os.environ.get("EXCEL_PASSWORD", "")
 SHARED_SECRET = os.environ.get("SHARED_SECRET", "")
 SOFFICE_TIMEOUT = int(os.environ.get("SOFFICE_TIMEOUT", "120"))

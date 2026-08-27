@@ -20,10 +20,7 @@ class TemplateChanged(Exception):
 
 
 def decrypt_to_bytes(raw: bytes, password: str) -> bytes:
-    """暗号化 xlsx を復号して平文 xlsx のバイト列を返す。
-
-    暗号化されていないファイルはそのまま返す。
-    """
+    """暗号化 xlsx を復号して平文 xlsx のバイト列を返す。"""
     src = io.BytesIO(raw)
     try:
         office = msoffcrypto.OfficeFile(src)
@@ -71,11 +68,7 @@ def check_template(wb: openpyxl.Workbook, is_invoice: bool) -> None:
 
 
 def _write(ws, addr: str, value: str) -> None:
-    """既存ラベルを保持して書き込む。
-
-    テンプレートのセルは「住所：」のようにラベルだけが入っている。
-    値で上書きするとラベルが消えるため、末尾がコロンなら追記する。
-    """
+    """既存ラベルを保持して書き込む。"""
     if value is None or value == "":
         return
     cur = ws[addr].value
@@ -86,9 +79,12 @@ def _write(ws, addr: str, value: str) -> None:
     if cur.rstrip().endswith(("：", ":")):
         ws[addr] = cur + value
         return
-    if value in cur:  # 再実行時の二重付与を防ぐ
+    if value in cur:
         return
-    if cur.strip() == "㊞":  # 押印欄は元のまま
+    if cur.strip() == "㊞":
+        return
+    if cur.rstrip().endswith("〒"):
+        ws[addr] = cur.rstrip() + value.lstrip("〒")
         return
     ws[addr] = cur + value
 
@@ -130,7 +126,7 @@ def edit(
         try:
             _add_stamp(ws, stamp_png)
             stamped = True
-        except Exception as exc:  # 角印だけの失敗で全体を落とさない
+        except Exception as exc:
             log.exception("角印の挿入に失敗: %s", exc)
 
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
