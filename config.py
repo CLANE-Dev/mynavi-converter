@@ -1,14 +1,9 @@
-"""固定値と記入セルの定義。
-
-セル位置は 2026年7月の実テンプレートで検証済み。
-テンプレートのセルには最初から「住所：」等のラベルが入っているため、
-値で上書きせずラベルの後ろへ追記する（excel_editor._write 参照）。
-"""
+"""固定値と記入セルの定義。"""
 import json
 import os
 
 INFO = {
-    "zip": os.environ.get("COMPANY_ZIP", "〒102-0081"),
+    "zip": os.environ.get("COMPANY_ZIP", "102-0081"),
     "addr": os.environ.get(
         "COMPANY_ADDR", "東京都千代田区四番町2番地1-1 クレール東郷坂 1F"
     ),
@@ -22,6 +17,14 @@ INFO = {
 }
 
 TARGET_SHEET = "表紙"
+
+EXCLUDE_SHEETS = [
+    x.strip()
+    for x in os.environ.get("EXCLUDE_SHEETS", "注意書き").split(",")
+    if x.strip()
+]
+
+FIT_TO_PAGE = os.environ.get("FIT_TO_PAGE", "1") not in ("0", "false", "False")
 
 COMMON_CELLS = {
     "F13": INFO["zip"],
@@ -38,8 +41,6 @@ INVOICE_CELLS = {
     "B45": INFO["note"],
 }
 
-# F13 は元から空欄の入力枠なのでガードしない。
-# 環境変数 GUARD_LABELS_JSON / GUARD_LABELS_INVOICE_JSON で上書きできる。
 _DEFAULT_LABELS = {
     "E14": ("住所",),
     "E20": ("TEL", "ＴＥＬ", "電話"),
@@ -71,7 +72,7 @@ EXPECTED_LABELS_INVOICE = _labels_from_env(
 
 STAMP_ANCHOR = os.environ.get("STAMP_ANCHOR", "H18")
 STAMP_WIDTH_PX = int(os.environ.get("STAMP_WIDTH_PX", "105"))
-STAMP_OFFSET_X_PX = int(os.environ.get("STAMP_OFFSET_X_PX", "0"))
+STAMP_OFFSET_X_PX = int(os.environ.get("STAMP_OFFSET_X_PX", "30"))
 STAMP_OFFSET_Y_PX = int(os.environ.get("STAMP_OFFSET_Y_PX", "0"))
 
 EXCEL_PASSWORD = os.environ.get("EXCEL_PASSWORD", "")

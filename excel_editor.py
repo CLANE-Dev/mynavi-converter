@@ -8,6 +8,10 @@ import os
 import msoffcrypto
 import openpyxl
 from openpyxl.drawing.image import Image as XLImage
+from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, OneCellAnchor
+from openpyxl.drawing.xdr import XDRPositiveSize2D
+from openpyxl.utils import coordinate_to_tuple
+from openpyxl.utils.units import pixels_to_EMU
 from PIL import Image as PILImage
 
 import config
@@ -90,13 +94,47 @@ def _write(ws, addr: str, value: str) -> None:
 
 
 def _add_stamp(ws, stamp_png: bytes) -> None:
-    """角印を表紙の押印欄に貼る。縦横比は維持する。"""
+    """角印を表紙の押印欄に貼る。縦横比は維持し、セル基準＋画素オフセットで置く。"""
     with PILImage.open(io.BytesIO(stamp_png)) as im:
         w, h = im.size
+    width = config.STAMP_WIDTH_PX
+    height = int(width * h / w)
+
     img = XLImage(io.BytesIO(stamp_png))
-    img.width = config.STAMP_WIDTH_PX
-    img.height = int(config.STAMP_WIDTH_PX * h / w)
-    ws.add_image(img, config.STAMP_ANCHOR)
+    img.width = width
+    img.height = height
+
+    row, col = coordinate_to_tuple(config.STAMP_ANCHOR)
+    marker = AnchorMarker(
+        col=col - 1,
+        colOff=pixels_to_EMU(config.STAMP_OFFSET_X_PX),
+        row=row - 1,
+        rowOff=pixels_to_EMU(config.STAMP_OFFSET_Y_PX),
+    )
+    img.anchor = OneCellAnchor(
+        _from=marker,
+        ext=XDRPositiveSize2D(pixels_to_EMU(width), pixels_to_EMU(height)),
+    )
+    ws.add_image(img)
+
+
+def _drop_excluded_sheets(wb) -> list:
+    """注意書き等、送付対象外のシートをPDF化前に取り除く。"""
+    removed = []
+    for name in list(wb.sheetnames):
+        if name in config.EXCLUDE_SHEETS and len(wb.sheetnames) > 1:
+            wb.remove(wb[name])
+            removed.append(name)
+    return removed
+
+
+def _fit_to_one_page(wb) -> None:
+    """全シートを横1×縦1ページに収める。"""
+    for ws in wb.worksheets:
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 1
+        ws.page_setup.scale = None
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
 
 
 def edit(
@@ -129,6 +167,16 @@ def edit(
         except Exception as exc:
             log.exception("角印の挿入に失敗: %s", exc)
 
+    removed = _drop_excluded_sheets(wb)
+    if config.FIT_TO_PAGE:
+        _fit_to_one_page(wb)
+
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     wb.save(out_path)
-    return {"sheet": ws.title, "written": written, "stamped": stamped}
+    return {
+        "sheet": ws.title,
+        "written": written,
+        "stamped": stamped,
+        "removed_sheets": removed,
+        "sheets": wb.sheetnames,
+    }
