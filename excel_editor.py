@@ -93,23 +93,32 @@ def _write(ws, addr: str, value: str) -> None:
     ws[addr] = cur + value
 
 
-def _add_stamp(ws, stamp_png: bytes) -> None:
+def _add_stamp(ws, stamp_png: bytes, is_invoice: bool = True) -> None:
     """角印を表紙の押印欄に貼る。縦横比は維持し、セル基準＋画素オフセットで置く。"""
     with PILImage.open(io.BytesIO(stamp_png)) as im:
         w, h = im.size
-    width = config.STAMP_WIDTH_PX
+    if is_invoice:
+        anchor = config.STAMP_ANCHOR
+        width = config.STAMP_WIDTH_PX
+        offx = config.STAMP_OFFSET_X_PX
+        offy = config.STAMP_OFFSET_Y_PX
+    else:
+        anchor = config.STAMP_ANCHOR_DELIVERY
+        width = config.STAMP_WIDTH_PX_DELIVERY
+        offx = config.STAMP_OFFSET_X_PX_DELIVERY
+        offy = config.STAMP_OFFSET_Y_PX_DELIVERY
     height = int(width * h / w)
 
     img = XLImage(io.BytesIO(stamp_png))
     img.width = width
     img.height = height
 
-    row, col = coordinate_to_tuple(config.STAMP_ANCHOR)
+    row, col = coordinate_to_tuple(anchor)
     marker = AnchorMarker(
         col=col - 1,
-        colOff=pixels_to_EMU(config.STAMP_OFFSET_X_PX),
+        colOff=pixels_to_EMU(offx),
         row=row - 1,
-        rowOff=pixels_to_EMU(config.STAMP_OFFSET_Y_PX),
+        rowOff=pixels_to_EMU(offy),
     )
     img.anchor = OneCellAnchor(
         _from=marker,
@@ -162,7 +171,7 @@ def edit(
     stamped = False
     if stamp_png:
         try:
-            _add_stamp(ws, stamp_png)
+            _add_stamp(ws, stamp_png, is_invoice)
             stamped = True
         except Exception as exc:
             log.exception("角印の挿入に失敗: %s", exc)
