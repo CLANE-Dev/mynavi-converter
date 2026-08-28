@@ -26,7 +26,8 @@ logging.basicConfig(
 )
 log = logging.getLogger("mynavi-converter")
 
-VERSION = "1.0"
+VERSION = "1.1"
+PREVIEW_WIDTH_PX = int(os.environ.get("PREVIEW_WIDTH_PX", "1100"))
 app = FastAPI(title="mynavi-converter", version=VERSION, docs_url=None, redoc_url=None)
 
 
@@ -34,6 +35,7 @@ class ConvertRequest(BaseModel):
     filename: str = Field(..., max_length=300)
     xlsx_b64: str
     kind: str = Field("auto", pattern="^(auto|invoice|delivery)$")
+    preview: bool = False
     stamp_b64: str | None = None
 
 
