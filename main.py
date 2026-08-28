@@ -28,6 +28,7 @@ log = logging.getLogger("mynavi-converter")
 
 VERSION = "1.1"
 PREVIEW_WIDTH_PX = int(os.environ.get("PREVIEW_WIDTH_PX", "1100"))
+
 app = FastAPI(title="mynavi-converter", version=VERSION, docs_url=None, redoc_url=None)
 
 
@@ -35,8 +36,8 @@ class ConvertRequest(BaseModel):
     filename: str = Field(..., max_length=300)
     xlsx_b64: str
     kind: str = Field("auto", pattern="^(auto|invoice|delivery)$")
-    preview: bool = False
     stamp_b64: str | None = None
+    preview: bool = False
 
 
 @app.on_event("startup")
@@ -71,8 +72,23 @@ def _is_invoice(filename: str, kind: str) -> bool:
         return True
     if kind == "delivery":
         return False
-    # auto: ファイル名で判定。「納品」を含めば納品書、それ以外は請求書扱い。
     return "納品" not in filename
+
+
+def _render_previews(pdf_bytes: bytes) -> list:
+    """PDFの各ページをJPEGにして base64 で返す。確認画面に埋め込むため。"""
+    import pymupdf
+
+    out = []
+    doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        for page in doc:
+            zoom = PREVIEW_WIDTH_PX / max(page.rect.width, 1)
+            pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom))
+            out.append(base64.b64encode(pix.tobytes("jpeg", jpg_quality=78)).decode("ascii"))
+    finally:
+        doc.close()
+    return out
 
 
 @app.post("/convert")
@@ -118,11 +134,7 @@ def convert(
             log.warning("テンプレート差分により中断: %s", exc)
             return JSONResponse(
                 status_code=409,
-                content={
-                    "ok": False,
-                    "error": "template_changed",
-                    "detail": str(exc),
-                },
+                content={"ok": False, "error": "template_changed", "detail": str(exc)},
             )
         except Exception as exc:
             log.exception("記入処理に失敗")
@@ -143,12 +155,20 @@ def convert(
         with open(pdf_path, "rb") as fh:
             pdf_bytes = fh.read()
 
+        previews = []
+        if req.preview:
+            try:
+                previews = _render_previews(pdf_bytes)
+            except Exception as exc:
+                log.exception("プレビュー画像の生成に失敗: %s", exc)
+
     log.info(
-        "変換完了 %s invoice=%s stamped=%s pdf=%dbytes",
+        "変換完了 %s invoice=%s stamped=%s pdf=%dbytes previews=%d",
         base,
         is_invoice,
         result["stamped"],
         len(pdf_bytes),
+        len(previews),
     )
     return {
         "ok": True,
@@ -158,4 +178,5 @@ def convert(
         "sheet": result["sheet"],
         "pdf_size": len(pdf_bytes),
         "pdf_b64": base64.b64encode(pdf_bytes).decode("ascii"),
+        "previews": previews,
     }
